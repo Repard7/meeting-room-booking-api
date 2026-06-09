@@ -1,0 +1,640 @@
+openapi: 3.0.0
+info:
+  title: Meeting Room Booking API
+  description: API для бронирования переговорных комнат с ролями USER и ADMIN
+  version: 1.0.0
+  contact:
+    name: Developer
+    email: grachev@example.com
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Локальный сервер разработки
+
+tags:
+  - name: Auth
+    description: Аутентификация и регистрация
+  - name: Rooms
+    description: Управление переговорными комнатами
+  - name: Bookings
+    description: Бронирование переговорных
+  - name: Admin
+    description: Административные функции
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # Общие схемы
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Invalid input"
+
+    # Пользователи
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        username:
+          type: string
+          example: "john_doe"
+        email:
+          type: string
+          format: email
+          example: "john@example.com"
+        role:
+          type: string
+          enum: [ USER, ADMIN ]
+          example: "USER"
+        createdAt:
+          type: string
+          format: date-time
+
+    RegisterRequest:
+      type: object
+      required:
+        - username
+        - email
+        - password
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+          example: "john_doe"
+        email:
+          type: string
+          format: email
+          example: "john@example.com"
+        password:
+          type: string
+          format: password
+          minLength: 6
+          example: "secure123"
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: "john@example.com"
+        password:
+          type: string
+          format: password
+          example: "secure123"
+
+    AuthResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIs..."
+        refresh_token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIs..."
+        token_type:
+          type: string
+          example: "Bearer"
+        expires_in:
+          type: integer
+          example: 3600
+
+    # Комнаты
+    Room:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 5
+        name:
+          type: string
+          example: "Conference Hall A"
+        capacity:
+          type: integer
+          minimum: 1
+          example: 10
+        hasProjector:
+          type: boolean
+          example: true
+        hasWhiteboard:
+          type: boolean
+          example: false
+        isActive:
+          type: boolean
+          example: true
+
+    CreateRoomRequest:
+      type: object
+      required:
+        - name
+        - capacity
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          example: "Meeting Room B"
+        capacity:
+          type: integer
+          minimum: 1
+          example: 6
+        hasProjector:
+          type: boolean
+          default: false
+        hasWhiteboard:
+          type: boolean
+          default: false
+
+    UpdateRoomRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          example: "Updated Room Name"
+        capacity:
+          type: integer
+          minimum: 1
+          example: 12
+        hasProjector:
+          type: boolean
+        hasWhiteboard:
+          type: boolean
+        isActive:
+          type: boolean
+
+    # Бронирования
+    Booking:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 42
+        roomId:
+          type: integer
+          example: 5
+        userId:
+          type: integer
+          example: 1
+        title:
+          type: string
+          example: "Sprint Planning"
+        startTime:
+          type: string
+          format: date-time
+          example: "2026-06-10T10:00:00Z"
+        endTime:
+          type: string
+          format: date-time
+          example: "2026-06-10T11:00:00Z"
+        status:
+          type: string
+          enum: [ PENDING, CONFIRMED, CANCELLED, COMPLETED ]
+          example: "CONFIRMED"
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateBookingRequest:
+      type: object
+      required:
+        - roomId
+        - startTime
+        - endTime
+      properties:
+        roomId:
+          type: integer
+          example: 5
+        title:
+          type: string
+          maxLength: 200
+          example: "Team Sync"
+        startTime:
+          type: string
+          format: date-time
+          example: "2026-06-10T10:00:00Z"
+        endTime:
+          type: string
+          format: date-time
+          example: "2026-06-10T11:00:00Z"
+
+    UpdateBookingRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [ CANCELLED ]  # Обычный пользователь может только отменить
+
+    # Админские действия
+    AdminUpdateBookingRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ PENDING, CONFIRMED, CANCELLED, COMPLETED ]
+        roomId:
+          type: integer
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+
+security:
+  - BearerAuth: [ ]
+
+paths:
+  # ========== AUTH ==========
+  /auth/register:
+    post:
+      tags: [ Auth ]
+      summary: Регистрация нового пользователя (роль USER по умолчанию)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Пользователь создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Неверные данные или email уже существует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/login:
+    post:
+      tags: [ Auth ]
+      summary: Вход пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Неверные учётные данные
+
+  /auth/refresh:
+    post:
+      tags: [ Auth ]
+      summary: Обновление access-токена (требуется refresh_token)
+      security: [ ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: Новый access_token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+
+  # ========== ROOMS ==========
+  /rooms:
+    get:
+      tags: [ Rooms ]
+      summary: Получить список всех активных комнат
+      security: [ ]
+      parameters:
+        - name: capacity
+          in: query
+          schema:
+            type: integer
+          description: Минимальная вместимость (фильтр)
+        - name: hasProjector
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Список комнат
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Room'
+
+    post:
+      tags: [ Rooms ]
+      summary: Создать новую комнату (только ADMIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoomRequest'
+      responses:
+        '201':
+          description: Комната создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Room'
+        '403':
+          description: Недостаточно прав
+
+  /rooms/{roomId}:
+    get:
+      tags: [ Rooms ]
+      summary: Получить информацию о комнате
+      security: [ ]
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Комната найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Room'
+        '404':
+          description: Комната не найдена
+
+    put:
+      tags: [ Rooms ]
+      summary: Обновить комнату (только ADMIN)
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRoomRequest'
+      responses:
+        '200':
+          description: Комната обновлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Room'
+        '403': { description: Forbidden }
+        '404': { description: Not found }
+
+    delete:
+      tags: [ Rooms ]
+      summary: Удалить комнату (мягкое удаление, isActive=false, только ADMIN)
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Удалено
+        '403':
+          description: Недостаточно прав
+
+  # ========== BOOKINGS ==========
+  /bookings:
+    get:
+      tags: [ Bookings ]
+      summary: Получить список бронирований текущего пользователя
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ PENDING, CONFIRMED, CANCELLED, COMPLETED ]
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Список бронирований
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Booking'
+
+    post:
+      tags: [ Bookings ]
+      summary: Создать новое бронирование (статус PENDING)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBookingRequest'
+      responses:
+        '201':
+          description: Бронирование создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '400':
+          description: Конфликт времени или неверные данные
+        '409':
+          description: Комната уже забронирована на это время
+
+  /bookings/{bookingId}:
+    get:
+      tags: [ Bookings ]
+      summary: Получить детали конкретного бронирования (если принадлежит пользователю или ADMIN)
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '404': { description: Not found }
+
+    put:
+      tags: [ Bookings ]
+      summary: Обновить бронирование (USER может изменить только время/название, если статус PENDING, или отменить)
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBookingRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '403': { description: Нельзя изменить подтверждённое бронирование или не свои данные }
+
+    delete:
+      tags: [ Bookings ]
+      summary: Отменить бронирование (перевести в статус CANCELLED)
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+      responses:
+        '204': { description: Успешно отменено }
+        '403': { description: Нельзя отменить уже завершённое или чужое }
+
+  # ========== ADMIN ==========
+  /admin/bookings:
+    get:
+      tags: [ Admin ]
+      summary: Получить все бронирования (ADMIN только)
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: userId
+          in: query
+          schema:
+            type: integer
+        - name: roomId
+          in: query
+          schema:
+            type: integer
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Booking'
+        '403': { description: Forbidden }
+
+  /admin/bookings/{bookingId}:
+    put:
+      tags: [ Admin ]
+      summary: Админ изменяет любое бронирование (статус, комнату, время)
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminUpdateBookingRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '403': { description: Не ADMIN }
+
+  /admin/users:
+    get:
+      tags: [ Admin ]
+      summary: Список всех пользователей (ADMIN только)
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+        '403': { description: Forbidden }
+
+  /admin/users/{userId}/role:
+    patch:
+      tags: [ Admin ]
+      summary: Изменить роль пользователя (ADMIN)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role:
+                  type: string
+                  enum: [ USER, ADMIN ]
+      responses:
+        '200': { description: Role updated }
+        '403': { description: Forbidden }
